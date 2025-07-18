@@ -28,17 +28,34 @@ export async function handlerUploadVideo(cfg: ApiConfig, req: BunRequest) {
   const mediaType = file.type;
   if (mediaType !== "video/mp4" && mediaType !== "video/webm") throw new BadRequestError("Invalid media type");
   const data = await file.arrayBuffer();
-  const fileName = randomBytes(32).toString("hex") + path.extname(file.name);
+  let fileName = randomBytes(32).toString("hex") + path.extname(file.name);
   const filePath = join(tmpdir(), fileName);
 
   await Bun.write(filePath, new Uint8Array(data));
 
-  const s3file = cfg.s3Client.file(fileName);
+  const aspectRatio = await getVideoAspectRatio(filePath);
+  const s3file = cfg.s3Client.file(aspectRatio + "/" + fileName);
   await s3file.write(Bun.file(filePath));
   await Bun.file(filePath).delete();
 
-  videoData.videoURL = `https://${cfg.s3Bucket}.s3.${cfg.s3Region}.amazonaws.com/${fileName}`;
+  videoData.videoURL = `https://${cfg.s3Bucket}.s3.${cfg.s3Region}.amazonaws.com/${aspectRatio}/${fileName}`;
   updateVideo(cfg.db, videoData);
 
   return respondWithJSON(200, videoData);
+}
+
+async function getVideoAspectRatio(filePath: string) {
+  const videoData = Bun.spawn(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "json", filePath], {
+    stdout: "pipe",
+  });
+  const aspectRatioText = await new Response(videoData.stdout).text();
+  const aspectRatio = Math.round((JSON.parse(aspectRatioText).streams[0].width / JSON.parse(aspectRatioText).streams[0].height) * 100) / 100;
+  switch (aspectRatio) {
+    case Math.round(16 / 9 * 100) / 100:
+      return "landscape";
+    case Math.round(9 / 16 * 100) / 100:
+      return "portrait";
+    default:
+      return "other";
+  }
 }
