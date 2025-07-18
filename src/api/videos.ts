@@ -3,11 +3,12 @@ import { BadRequestError, UserForbiddenError } from "./errors";
 import { type ApiConfig } from "../config";
 import type { BunRequest } from "bun";
 import { getBearerToken, validateJWT } from "../auth";
-import { getVideo, updateVideo } from "../db/videos";
+import { getVideo, updateVideo, type Video } from "../db/videos";
 import { join } from "path";
 import path from "path";
 import { tmpdir } from "os";
 import { randomBytes } from "crypto";
+import { dbVideoToSignedVideo } from "./sign-url";
 
 export async function handlerUploadVideo(cfg: ApiConfig, req: BunRequest) {
   const maxFilesize = 1 << 30; // 1 GB
@@ -35,17 +36,18 @@ export async function handlerUploadVideo(cfg: ApiConfig, req: BunRequest) {
 
   const aspectRatio = await getVideoAspectRatio(filePath);
   filePath = await processVideoForFastStart(filePath);
-  const s3file = cfg.s3Client.file(aspectRatio + "/" + fileName);
-  console.log(`DEBUG:: uploading from: ${filePath} to: ${aspectRatio}/${fileName}`);
-
+  const s3Key = aspectRatio + "/" + fileName;
+  const s3file = cfg.s3Client.file(s3Key);
   await s3file.write(Bun.file(filePath));
 
   await Bun.file(filePath).delete();
 
-  videoData.videoURL = `https://${cfg.s3Bucket}.s3.${cfg.s3Region}.amazonaws.com/${aspectRatio}/${fileName}`;
+  // videoData.videoURL = `https://${cfg.s3Bucket}.s3.${cfg.s3Region}.amazonaws.com/${aspectRatio}/${fileName}`;
+  videoData.videoURL = `${s3Key}`;
   updateVideo(cfg.db, videoData);
 
-  return respondWithJSON(200, videoData);
+  const signedVideo: Video = await dbVideoToSignedVideo(cfg, videoData);
+  return respondWithJSON(200, signedVideo);
 }
 
 async function getVideoAspectRatio(filePath: string) {
