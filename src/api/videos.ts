@@ -29,13 +29,17 @@ export async function handlerUploadVideo(cfg: ApiConfig, req: BunRequest) {
   if (mediaType !== "video/mp4" && mediaType !== "video/webm") throw new BadRequestError("Invalid media type");
   const data = await file.arrayBuffer();
   let fileName = randomBytes(32).toString("hex") + path.extname(file.name);
-  const filePath = join(tmpdir(), fileName);
+  let filePath = join(tmpdir(), fileName);
 
   await Bun.write(filePath, new Uint8Array(data));
 
   const aspectRatio = await getVideoAspectRatio(filePath);
+  filePath = await processVideoForFastStart(filePath);
   const s3file = cfg.s3Client.file(aspectRatio + "/" + fileName);
+  console.log(`DEBUG:: uploading from: ${filePath} to: ${aspectRatio}/${fileName}`);
+
   await s3file.write(Bun.file(filePath));
+
   await Bun.file(filePath).delete();
 
   videoData.videoURL = `https://${cfg.s3Bucket}.s3.${cfg.s3Region}.amazonaws.com/${aspectRatio}/${fileName}`;
@@ -58,4 +62,16 @@ async function getVideoAspectRatio(filePath: string) {
     default:
       return "other";
   }
+}
+
+async function processVideoForFastStart(inputFilePath: string) {
+  const outputFilePath = inputFilePath.replace(".mp4", "-fast.mp4");
+  const ffmpeg = Bun.spawn(["ffmpeg", "-i", inputFilePath, "-movflags", "+faststart", "-map_metadata", "0", "-codec", "copy", "-f", "mp4", outputFilePath], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  await ffmpeg.exited;
+
+  await Bun.file(inputFilePath).delete();
+  return outputFilePath;
 }
