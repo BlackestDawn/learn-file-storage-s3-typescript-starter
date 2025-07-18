@@ -14,6 +14,7 @@ export type ApiConfig = {
   s3CfDistribution: string;
   port: string;
   s3Client: S3Client;
+  cdnDomain: string;
 };
 
 const pathToDB = envOrThrow("DB_PATH");
@@ -25,6 +26,7 @@ const s3Bucket = envOrThrow("S3_BUCKET");
 const s3Region = envOrThrow("S3_REGION");
 const s3CfDistribution = envOrThrow("S3_CF_DISTRO");
 const port = envOrThrow("PORT");
+const cdnDomain = envOrThrow("CDN_DOMAIN");
 
 const db = newDatabase(pathToDB);
 
@@ -39,6 +41,7 @@ export const cfg: ApiConfig = {
   s3CfDistribution: s3CfDistribution,
   port: port,
   s3Client: s3,
+  cdnDomain: cdnDomain,
 };
 
 function envOrThrow(key: string) {

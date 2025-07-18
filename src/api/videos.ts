@@ -8,7 +8,6 @@ import { join } from "path";
 import path from "path";
 import { tmpdir } from "os";
 import { randomBytes } from "crypto";
-import { dbVideoToSignedVideo } from "./sign-url";
 
 export async function handlerUploadVideo(cfg: ApiConfig, req: BunRequest) {
   const maxFilesize = 1 << 30; // 1 GB
@@ -42,12 +41,10 @@ export async function handlerUploadVideo(cfg: ApiConfig, req: BunRequest) {
 
   await Bun.file(filePath).delete();
 
-  // videoData.videoURL = `https://${cfg.s3Bucket}.s3.${cfg.s3Region}.amazonaws.com/${aspectRatio}/${fileName}`;
-  videoData.videoURL = `${s3Key}`;
+  videoData.videoURL = `https://${cfg.cdnDomain}/${aspectRatio}/${fileName}`;
   updateVideo(cfg.db, videoData);
 
-  const signedVideo: Video = await dbVideoToSignedVideo(cfg, videoData);
-  return respondWithJSON(200, signedVideo);
+  return respondWithJSON(200, videoData);
 }
 
 async function getVideoAspectRatio(filePath: string) {
